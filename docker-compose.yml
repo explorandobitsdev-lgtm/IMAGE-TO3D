@@ -1,0 +1,13 @@
+services:
+  web:
+    build: .
+    image: 3dpalmilha:latest
+    container_name: 3dpalmilha
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/data
+    restart: unless-stopped
+    environment:
+      - UPLOAD_DIR=/data/uploads
+      - OUTPUT_DIR=/data/outputs

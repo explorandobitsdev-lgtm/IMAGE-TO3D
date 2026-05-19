@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>3D Palmilha — Imagem para 3D</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Imagem &rarr; 3D</h1>
+      <p class="muted">
+        Heightmap (relevo) ou palmilha corretiva a partir de foto de pisada.
+        Open source: OpenCV, Trimesh, potrace.
+      </p>
+      <p class="status">
+        SVG (potrace):
+        {% if potrace %}<span class="ok">disponível</span>{% else %}<span class="warn">indisponível</span>{% endif %}
+      </p>
+    </header>
+
+    <form id="form" enctype="multipart/form-data">
+      <label>
+        Imagem
+        <input type="file" name="image" accept="image/*" required />
+      </label>
+
+      <label>
+        Modo
+        <select name="mode" id="mode">
+          <option value="heightmap">Heightmap (qualquer imagem)</option>
+          <option value="palmilha">Palmilha (foto de pisada)</option>
+        </select>
+      </label>
+
+      <label>
+        Conversão automática para SVG
+        <select name="auto_svg">
+          <option value="auto" selected>Automática (heurística)</option>
+          <option value="on">Sempre vetorizar</option>
+          <option value="off">Nunca vetorizar</option>
+        </select>
+      </label>
+
+      <fieldset id="opts-heightmap">
+        <legend>Opções heightmap</legend>
+        <label>Altura máxima (mm) <input type="number" name="max_height" value="10" step="0.5" /></label>
+        <label>Pixel size (mm) <input type="number" name="pixel_size" value="0.3" step="0.05" /></label>
+        <label>Espessura base (mm) <input type="number" name="base_thickness" value="2" step="0.5" /></label>
+        <label>Lado maior (px) <input type="number" name="max_dim" value="400" step="50" /></label>
+        <label class="check"><input type="checkbox" name="invert" /> Inverter (escuro = alto)</label>
+      </fieldset>
+
+      <fieldset id="opts-palmilha" hidden>
+        <legend>Opções palmilha</legend>
+        <label>Numeração (EUR)
+          <input type="number" name="num" value="41" min="28" max="50" />
+        </label>
+        <label>Lado
+          <select name="lado">
+            <option value="auto" selected>Detectar automaticamente</option>
+            <option value="direito">Direito</option>
+            <option value="esquerdo">Esquerdo</option>
+          </select>
+        </label>
+      </fieldset>
+
+      <button type="submit">Converter</button>
+    </form>
+
+    <section id="result" hidden>
+      <h2>Resultado</h2>
+      <div id="result-body"></div>
+    </section>
+
+    <section id="error" hidden class="error">
+      <h2>Erro</h2>
+      <p id="error-body"></p>
+    </section>
+  </main>
+
+  <script>
+    const modeSel = document.getElementById('mode');
+    const optsHm = document.getElementById('opts-heightmap');
+    const optsPa = document.getElementById('opts-palmilha');
+    modeSel.addEventListener('change', () => {
+      const palmilha = modeSel.value === 'palmilha';
+      optsHm.hidden = palmilha;
+      optsPa.hidden = !palmilha;
+    });
+
+    const form = document.getElementById('form');
+    const resultBox = document.getElementById('result');
+    const resultBody = document.getElementById('result-body');
+    const errBox = document.getElementById('error');
+    const errBody = document.getElementById('error-body');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      resultBox.hidden = true;
+      errBox.hidden = true;
+      const btn = form.querySelector('button');
+      btn.disabled = true;
+      btn.textContent = 'Processando...';
+
+      try {
+        const data = new FormData(form);
+        const resp = await fetch('/api/convert', { method: 'POST', body: data });
+        const json = await resp.json();
+        if (!resp.ok) throw new Error(json.error || 'Falha ao converter.');
+
+        let html = '<dl>';
+        html += `<dt>Modo</dt><dd>${json.mode}</dd>`;
+        html += `<dt>Vetorizado</dt><dd>${json.vectorized ? 'sim' : 'não'}</dd>`;
+        if (json.analise) {
+          html += `<dt>Análise da pisada</dt><dd>tipo: <b>${json.analise.tipo}</b>, índice ${json.analise.arch_index}, pé ${json.analise.lado}</dd>`;
+        }
+        if (json.palmilha) {
+          html += `<dt>Palmilha</dt><dd>${json.palmilha.comprimento_mm}×${json.palmilha.largura_mm} mm, arco ${json.palmilha.altura_arco_mm} mm, cunha ${json.palmilha.cunha_medial_mm} mm</dd>`;
+        }
+        if (json.stats) {
+          html += `<dt>Mesh</dt><dd>${json.stats.vertices} vértices, ${json.stats.faces} faces</dd>`;
+        }
+        html += '</dl><div class="downloads">';
+        for (const [k, v] of Object.entries(json.files || {})) {
+          html += `<a class="dl" href="/download/${v}" download>${k.toUpperCase()} — ${v}</a>`;
+        }
+        html += '</div>';
+        resultBody.innerHTML = html;
+        resultBox.hidden = false;
+      } catch (err) {
+        errBody.textContent = err.message;
+        errBox.hidden = false;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Converter';
+      }
+    });
+  </script>
+</body>
+</html>
