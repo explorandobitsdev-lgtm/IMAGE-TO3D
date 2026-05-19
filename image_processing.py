@@ -177,11 +177,15 @@ def prepare_heightmap(
     if mask is None:
         mask = np.ones_like(gray, dtype=bool)
 
+    active_pixels = int(np.count_nonzero(mask))
+    if active_pixels < 4:
+        raise ValueError("Mascara/threshold deixou poucos pixels ativos para gerar 3D.")
+
     heightmap = (gray.astype(np.float64) / 255.0) * float(max_height_mm)
     heightmap = np.where(mask, heightmap, 0.0)
 
     info["output_size"] = (int(gray.shape[1]), int(gray.shape[0]))
-    info["mask_pixels"] = int(np.count_nonzero(mask))
+    info["mask_pixels"] = active_pixels
     info["height_min_mm"] = float(heightmap[mask].min()) if np.any(mask) else 0.0
     info["height_max_mm"] = float(heightmap[mask].max()) if np.any(mask) else 0.0
     return heightmap, mask, info

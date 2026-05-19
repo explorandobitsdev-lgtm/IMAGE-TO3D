@@ -1,4 +1,4 @@
-numpy>=1.24
+numpy>=1.24,<2.4
 opencv-python-headless>=4.8
 trimesh>=4.0
 pillow>=10.0

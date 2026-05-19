@@ -114,27 +114,23 @@ def api_convert():
                 denoise=enhance,
                 edge_boost=0.18 if enhance else 0.0,
             )
-            if img is None:
-                raise ValueError("Não consegui ler a imagem.")
-            if invert:
-                img = 255 - img
-            if max(img.shape) > max_dim:
-                scale = max_dim / max(img.shape)
-                new_size = (int(img.shape[1] * scale), int(img.shape[0] * scale))
-                img = cv2.resize(img, new_size, interpolation=cv2.INTER_AREA)
-            img = cv2.GaussianBlur(img, (3, 3), 0)
-
-            import numpy as np
-
-            heightmap = (img.astype(np.float64) / 255.0) * max_height
             mesh = heightmap_to_mesh(
                 heightmap,
                 pixel_size_mm=pixel_size,
                 base_thickness_mm=base_thickness,
+                mask=mesh_mask,
             )
             stl, obj = save_mesh(mesh, str(out_base))
             result["files"]["stl"] = Path(stl).name
             result["files"]["obj"] = Path(obj).name
+            result["preprocess"] = {
+                "input_size": f"{prep['input_size'][0]}x{prep['input_size'][1]}",
+                "output_size": f"{prep['output_size'][0]}x{prep['output_size'][1]}",
+                "mask_applied": bool(prep["mask_applied"]),
+                "cropped": bool(prep["cropped"]),
+                "auto_inverted": bool(prep["auto_inverted"]),
+                "enhanced": bool(prep["enhanced"]),
+            }
             result["stats"] = {
                 "vertices": len(mesh.vertices),
                 "faces": len(mesh.faces),
@@ -198,4 +194,4 @@ def health():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8000, debug=False)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", "8000")), debug=False)

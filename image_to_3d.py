@@ -17,44 +17,43 @@ import argparse
 import os
 import sys
 
-import cv2
-import numpy as np
-
 from heightmap_utils import heightmap_to_mesh, save_mesh
+from image_processing import prepare_heightmap_image
 from palmilha import analyze_footprint, generate_palmilha
 
 
-def _read_grayscale(path):
-    img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
-    if img is None:
-        raise FileNotFoundError(f"Imagem não encontrada ou ilegível: {path}")
-    return img
-
-
 def cmd_heightmap(args):
-    img = _read_grayscale(args.image)
+    enhance = not args.no_enhance
+    heightmap, mask, prep = prepare_heightmap_image(
+        args.image,
+        max_height_mm=args.max_height,
+        max_dim=args.max_dim,
+        invert=args.invert,
+        auto_invert=args.auto_invert,
+        blur_radius=args.blur,
+        threshold=args.threshold,
+        auto_crop=args.auto_crop,
+        normalize=enhance,
+        denoise=enhance,
+        edge_boost=args.edge_boost if enhance else 0.0,
+    )
 
-    if args.invert:
-        img = 255 - img
+    if prep["scale"] != 1.0:
+        print(
+            f"  -> redimensionado para "
+            f"{prep['output_size'][0]}x{prep['output_size'][1]}"
+        )
+    if prep["cropped"]:
+        print(f"  -> recorte aplicado: {prep['output_size'][0]}x{prep['output_size'][1]}")
+    if prep["auto_inverted"]:
+        print("  -> inversao automatica aplicada (objeto escuro virou relevo alto)")
+    if prep["enhanced"]:
+        print("  -> melhoria aplicada: contraste, denoise e realce leve")
 
-    if args.max_dim and max(img.shape) > args.max_dim:
-        scale = args.max_dim / max(img.shape)
-        new_size = (int(img.shape[1] * scale), int(img.shape[0] * scale))
-        img = cv2.resize(img, new_size, interpolation=cv2.INTER_AREA)
-        print(f"  → redimensionado para {img.shape[1]}x{img.shape[0]}")
-
-    if args.blur > 0:
-        k = max(3, args.blur * 2 + 1)
-        img = cv2.GaussianBlur(img, (k, k), 0)
-
-    heightmap = (img.astype(np.float64) / 255.0) * args.max_height
-
-    if args.threshold > 0:
-        mask = img >= args.threshold
-    else:
-        mask = np.ones_like(img, dtype=bool)
-
-    print(f"  gerando mesh ({img.shape[0]}x{img.shape[1]} pixels)...")
+    print(
+        f"  gerando mesh ({heightmap.shape[0]}x{heightmap.shape[1]} pixels, "
+        f"{prep['mask_pixels']} px ativos)..."
+    )
     mesh = heightmap_to_mesh(
         heightmap,
         pixel_size_mm=args.pixel_size,
@@ -168,6 +167,27 @@ def build_parser():
         type=int,
         default=0,
         help="Se >0, pixels abaixo do valor são removidos do mesh.",
+    )
+    ph.add_argument(
+        "--auto-invert",
+        action="store_true",
+        help="Detecta objeto escuro em fundo claro e transforma em relevo alto.",
+    )
+    ph.add_argument(
+        "--auto-crop",
+        action="store_true",
+        help="Recorta a area ativa quando houver mascara/threshold.",
+    )
+    ph.add_argument(
+        "--no-enhance",
+        action="store_true",
+        help="Desativa normalizacao de contraste, denoise e realce.",
+    )
+    ph.add_argument(
+        "--edge-boost",
+        type=float,
+        default=0.18,
+        help="Realce fino antes da suavizacao (def: 0.18).",
     )
     ph.set_defaults(func=cmd_heightmap)
 

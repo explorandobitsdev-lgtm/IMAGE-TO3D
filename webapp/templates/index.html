@@ -49,6 +49,11 @@
         <label>Pixel size (mm) <input type="number" name="pixel_size" value="0.3" step="0.05" /></label>
         <label>Espessura base (mm) <input type="number" name="base_thickness" value="2" step="0.5" /></label>
         <label>Lado maior (px) <input type="number" name="max_dim" value="400" step="50" /></label>
+        <label>Suavizacao <input type="number" name="blur" value="1" min="0" max="6" step="1" /></label>
+        <label>Limite da mascara <input type="number" name="threshold" value="0" min="0" max="255" step="1" /></label>
+        <label class="check"><input type="checkbox" name="enhance" checked /> Melhoria automatica</label>
+        <label class="check"><input type="checkbox" name="auto_invert" checked /> Auto inverter tons escuros</label>
+        <label class="check"><input type="checkbox" name="auto_crop" checked /> Recortar pelo contorno</label>
         <label class="check"><input type="checkbox" name="invert" /> Inverter (escuro = alto)</label>
       </fieldset>
 
@@ -121,6 +126,15 @@
         }
         if (json.stats) {
           html += `<dt>Mesh</dt><dd>${json.stats.vertices} vértices, ${json.stats.faces} faces</dd>`;
+        }
+        if (json.preprocess) {
+          const flags = [
+            json.preprocess.enhanced ? 'melhoria' : null,
+            json.preprocess.mask_applied ? 'mascara' : null,
+            json.preprocess.cropped ? 'recorte' : null,
+            json.preprocess.auto_inverted ? 'auto-inversao' : null,
+          ].filter(Boolean).join(', ') || 'basico';
+          html += `<dt>Pre-processamento</dt><dd>${json.preprocess.input_size} -> ${json.preprocess.output_size}; ${flags}</dd>`;
         }
         html += '</dl><div class="downloads">';
         for (const [k, v] of Object.entries(json.files || {})) {
