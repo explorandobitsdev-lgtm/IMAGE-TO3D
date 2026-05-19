@@ -5,152 +5,364 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>3D Palmilha — Imagem para 3D</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
 </head>
 <body>
   <main>
     <header>
       <h1>Imagem &rarr; 3D</h1>
       <p class="muted">
-        Heightmap (relevo) ou palmilha corretiva a partir de foto de pisada.
-        Open source: OpenCV, Trimesh, potrace.
-      </p>
-      <p class="status">
+        Open source: OpenCV, Trimesh, potrace, Three.js.
         SVG (potrace):
         {% if potrace %}<span class="ok">disponível</span>{% else %}<span class="warn">indisponível</span>{% endif %}
       </p>
     </header>
 
-    <form id="form" enctype="multipart/form-data">
-      <label>
-        Imagem
-        <input type="file" name="image" accept="image/*" required />
-      </label>
-
-      <label>
-        Modo
-        <select name="mode" id="mode">
-          <option value="heightmap">Heightmap (qualquer imagem)</option>
-          <option value="palmilha">Palmilha (foto de pisada)</option>
-        </select>
-      </label>
-
-      <label>
-        Conversão automática para SVG
-        <select name="auto_svg">
-          <option value="auto" selected>Automática (heurística)</option>
-          <option value="on">Sempre vetorizar</option>
-          <option value="off">Nunca vetorizar</option>
-        </select>
-      </label>
-
-      <fieldset id="opts-heightmap">
-        <legend>Opções heightmap</legend>
-        <label>Altura máxima (mm) <input type="number" name="max_height" value="10" step="0.5" /></label>
-        <label>Pixel size (mm) <input type="number" name="pixel_size" value="0.3" step="0.05" /></label>
-        <label>Espessura base (mm) <input type="number" name="base_thickness" value="2" step="0.5" /></label>
-        <label>Lado maior (px) <input type="number" name="max_dim" value="400" step="50" /></label>
-        <label>Suavizacao <input type="number" name="blur" value="1" min="0" max="6" step="1" /></label>
-        <label>Limite da mascara <input type="number" name="threshold" value="0" min="0" max="255" step="1" /></label>
-        <label class="check"><input type="checkbox" name="enhance" checked /> Melhoria automatica</label>
-        <label class="check"><input type="checkbox" name="auto_invert" checked /> Auto inverter tons escuros</label>
-        <label class="check"><input type="checkbox" name="auto_crop" checked /> Recortar pelo contorno</label>
-        <label class="check"><input type="checkbox" name="invert" /> Inverter (escuro = alto)</label>
-      </fieldset>
-
-      <fieldset id="opts-palmilha" hidden>
-        <legend>Opções palmilha</legend>
-        <label>Numeração (EUR)
-          <input type="number" name="num" value="41" min="28" max="50" />
-        </label>
-        <label>Lado
-          <select name="lado">
-            <option value="auto" selected>Detectar automaticamente</option>
-            <option value="direito">Direito</option>
-            <option value="esquerdo">Esquerdo</option>
-          </select>
-        </label>
-      </fieldset>
-
-      <button type="submit">Converter</button>
-    </form>
-
-    <section id="result" hidden>
-      <h2>Resultado</h2>
-      <div id="result-body"></div>
+    <!-- PASSO 1: escolher o modo -->
+    <section id="mode-chooser" class="step">
+      <h2 class="step-title">1. Escolha o que quer gerar</h2>
+      <div class="mode-cards">
+        <button type="button" class="mode-card" data-mode="palmilha">
+          <div class="mode-icon">👣</div>
+          <div class="mode-title">Palmilha corretiva</div>
+          <div class="mode-desc">
+            Foto da pisada (impressão da planta do pé). O sistema classifica
+            <b>pronada / normal / cavo</b> e gera palmilha 3D com suporte de
+            arco, heel cup e cunha medial.
+          </div>
+          <div class="mode-tag">Saúde / Ortopedia</div>
+        </button>
+        <button type="button" class="mode-card" data-mode="heightmap">
+          <div class="mode-icon">🖼️</div>
+          <div class="mode-title">Imagem → relevo 3D</div>
+          <div class="mode-desc">
+            Qualquer imagem (logo, foto, desenho). Tons de cinza viram altura.
+            Bom para litofanias, plaquinhas, logos em relevo, moldes.
+          </div>
+          <div class="mode-tag">Genérico</div>
+        </button>
+      </div>
     </section>
 
-    <section id="error" hidden class="error">
+    <!-- PASSO 2A: formulário palmilha -->
+    <section id="form-palmilha" class="step" hidden>
+      <div class="step-head">
+        <button type="button" class="back-btn" data-action="back">← voltar</button>
+        <h2 class="step-title">Palmilha corretiva</h2>
+      </div>
+      <form data-mode="palmilha" enctype="multipart/form-data">
+        <label>
+          Foto da pisada (impressão da planta do pé)
+          <input type="file" name="image" accept="image/*" required />
+        </label>
+        <div class="row">
+          <label>Numeração (EUR)
+            <input type="number" name="num" value="41" min="28" max="50" required />
+          </label>
+          <label>Lado
+            <select name="lado">
+              <option value="auto" selected>Detectar automaticamente</option>
+              <option value="direito">Pé direito</option>
+              <option value="esquerdo">Pé esquerdo</option>
+            </select>
+          </label>
+        </div>
+        <button type="submit" class="primary">Analisar pisada e gerar palmilha</button>
+      </form>
+    </section>
+
+    <!-- PASSO 2B: formulário heightmap -->
+    <section id="form-heightmap" class="step" hidden>
+      <div class="step-head">
+        <button type="button" class="back-btn" data-action="back">← voltar</button>
+        <h2 class="step-title">Imagem → relevo 3D</h2>
+      </div>
+      <form data-mode="heightmap" enctype="multipart/form-data">
+        <label>
+          Imagem
+          <input type="file" name="image" accept="image/*" required />
+        </label>
+
+        <label>
+          Conversão automática para SVG
+          <select name="auto_svg">
+            <option value="auto" selected>Automática (decide pela imagem)</option>
+            <option value="on">Sempre vetorizar (potrace)</option>
+            <option value="off">Não vetorizar</option>
+          </select>
+        </label>
+
+        <fieldset>
+          <legend>Geometria</legend>
+          <div class="row">
+            <label>Altura máx. (mm)
+              <input type="number" name="max_height" value="10" step="0.5" />
+            </label>
+            <label>Pixel size (mm)
+              <input type="number" name="pixel_size" value="0.3" step="0.05" />
+            </label>
+            <label>Espessura base (mm)
+              <input type="number" name="base_thickness" value="2" step="0.5" />
+            </label>
+            <label>Lado maior (px)
+              <input type="number" name="max_dim" value="400" step="50" />
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Processamento</legend>
+          <div class="row">
+            <label>Suavização
+              <input type="number" name="blur" value="1" min="0" max="6" step="1" />
+            </label>
+            <label>Limite da máscara
+              <input type="number" name="threshold" value="0" min="0" max="255" step="1" />
+            </label>
+          </div>
+          <label class="check"><input type="checkbox" name="enhance" checked /> Melhoria automática (contraste + denoise)</label>
+          <label class="check"><input type="checkbox" name="auto_invert" checked /> Auto inverter tons escuros</label>
+          <label class="check"><input type="checkbox" name="auto_crop" checked /> Recortar pelo contorno</label>
+          <label class="check"><input type="checkbox" name="invert" /> Forçar inverter (escuro = alto)</label>
+        </fieldset>
+
+        <button type="submit" class="primary">Gerar mesh 3D</button>
+      </form>
+    </section>
+
+    <!-- PASSO 3: resultado + preview -->
+    <section id="result-section" class="step" hidden>
+      <div class="step-head">
+        <button type="button" class="back-btn" data-action="restart">← novo</button>
+        <h2 class="step-title">Pré-visualização</h2>
+      </div>
+
+      <div class="viewer-wrap">
+        <canvas id="viewer3d"></canvas>
+        <div class="viewer-hint">arraste para girar · roda do mouse para zoom</div>
+        <div id="viewer-loading" class="viewer-loading" hidden>carregando mesh…</div>
+      </div>
+
+      <div id="result-meta" class="result-meta"></div>
+      <div id="result-downloads" class="downloads"></div>
+    </section>
+
+    <section id="error-section" hidden class="error">
       <h2>Erro</h2>
       <p id="error-body"></p>
+      <button type="button" class="back-btn" data-action="restart">← voltar</button>
     </section>
   </main>
 
-  <script>
-    const modeSel = document.getElementById('mode');
-    const optsHm = document.getElementById('opts-heightmap');
-    const optsPa = document.getElementById('opts-palmilha');
-    modeSel.addEventListener('change', () => {
-      const palmilha = modeSel.value === 'palmilha';
-      optsHm.hidden = palmilha;
-      optsPa.hidden = !palmilha;
-    });
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
 
-    const form = document.getElementById('form');
-    const resultBox = document.getElementById('result');
-    const resultBody = document.getElementById('result-body');
-    const errBox = document.getElementById('error');
-    const errBody = document.getElementById('error-body');
+    class Viewer {
+      constructor(canvas) {
+        this.canvas = canvas;
+        this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+        this.renderer.setPixelRatio(window.devicePixelRatio);
+        this.scene = new THREE.Scene();
+        this.scene.background = new THREE.Color(0x0c0e13);
 
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      resultBox.hidden = true;
-      errBox.hidden = true;
-      const btn = form.querySelector('button');
-      btn.disabled = true;
-      btn.textContent = 'Processando...';
+        this.camera = new THREE.PerspectiveCamera(45, 1, 0.1, 8000);
+        this.controls = new OrbitControls(this.camera, canvas);
+        this.controls.enableDamping = true;
+        this.controls.dampingFactor = 0.08;
 
-      try {
-        const data = new FormData(form);
-        const resp = await fetch('/api/convert', { method: 'POST', body: data });
-        const json = await resp.json();
-        if (!resp.ok) throw new Error(json.error || 'Falha ao converter.');
+        const key = new THREE.DirectionalLight(0xffffff, 1.0);
+        key.position.set(80, 120, 100);
+        this.scene.add(key);
+        const fill = new THREE.DirectionalLight(0x88aaff, 0.4);
+        fill.position.set(-80, 40, -60);
+        this.scene.add(fill);
+        this.scene.add(new THREE.AmbientLight(0xffffff, 0.35));
 
-        let html = '<dl>';
-        html += `<dt>Modo</dt><dd>${json.mode}</dd>`;
-        html += `<dt>Vetorizado</dt><dd>${json.vectorized ? 'sim' : 'não'}</dd>`;
-        if (json.analise) {
-          html += `<dt>Análise da pisada</dt><dd>tipo: <b>${json.analise.tipo}</b>, índice ${json.analise.arch_index}, pé ${json.analise.lado}</dd>`;
-        }
-        if (json.palmilha) {
-          html += `<dt>Palmilha</dt><dd>${json.palmilha.comprimento_mm}×${json.palmilha.largura_mm} mm, arco ${json.palmilha.altura_arco_mm} mm, cunha ${json.palmilha.cunha_medial_mm} mm</dd>`;
-        }
-        if (json.stats) {
-          html += `<dt>Mesh</dt><dd>${json.stats.vertices} vértices, ${json.stats.faces} faces</dd>`;
-        }
-        if (json.preprocess) {
-          const flags = [
-            json.preprocess.enhanced ? 'melhoria' : null,
-            json.preprocess.mask_applied ? 'mascara' : null,
-            json.preprocess.cropped ? 'recorte' : null,
-            json.preprocess.auto_inverted ? 'auto-inversao' : null,
-          ].filter(Boolean).join(', ') || 'basico';
-          html += `<dt>Pre-processamento</dt><dd>${json.preprocess.input_size} -> ${json.preprocess.output_size}; ${flags}</dd>`;
-        }
-        html += '</dl><div class="downloads">';
-        for (const [k, v] of Object.entries(json.files || {})) {
-          html += `<a class="dl" href="/download/${v}" download>${k.toUpperCase()} — ${v}</a>`;
-        }
-        html += '</div>';
-        resultBody.innerHTML = html;
-        resultBox.hidden = false;
-      } catch (err) {
-        errBody.textContent = err.message;
-        errBox.hidden = false;
-      } finally {
-        btn.disabled = false;
-        btn.textContent = 'Converter';
+        const grid = new THREE.GridHelper(400, 20, 0x1f2530, 0x14181f);
+        grid.position.y = -0.01;
+        this.scene.add(grid);
+
+        this.group = null;
+        this._tick = this._tick.bind(this);
+        this._resize();
+        new ResizeObserver(() => this._resize()).observe(canvas);
+        requestAnimationFrame(this._tick);
       }
+
+      _resize() {
+        const w = this.canvas.clientWidth || 600;
+        const h = this.canvas.clientHeight || 400;
+        this.renderer.setSize(w, h, false);
+        this.camera.aspect = w / h;
+        this.camera.updateProjectionMatrix();
+      }
+
+      _tick() {
+        this.controls.update();
+        this.renderer.render(this.scene, this.camera);
+        requestAnimationFrame(this._tick);
+      }
+
+      clear() {
+        if (this.group) {
+          this.scene.remove(this.group);
+          this.group.traverse(o => {
+            if (o.geometry) o.geometry.dispose();
+            if (o.material) o.material.dispose();
+          });
+          this.group = null;
+        }
+      }
+
+      async loadObj(url) {
+        this.clear();
+        const loader = new OBJLoader();
+        const grp = await new Promise((res, rej) => {
+          loader.load(url, res, undefined, rej);
+        });
+        const mat = new THREE.MeshStandardMaterial({
+          color: 0x6aa9ff,
+          metalness: 0.05,
+          roughness: 0.55,
+          flatShading: false,
+        });
+        grp.traverse(c => {
+          if (c.isMesh) {
+            c.material = mat;
+            c.geometry.computeVertexNormals();
+          }
+        });
+        this.scene.add(grp);
+        this.group = grp;
+
+        const box = new THREE.Box3().setFromObject(grp);
+        const size = box.getSize(new THREE.Vector3());
+        const center = box.getCenter(new THREE.Vector3());
+        grp.position.sub(center);
+
+        const maxDim = Math.max(size.x, size.y, size.z) || 50;
+        const dist = maxDim * 1.9;
+        this.camera.position.set(dist, dist * 0.65, dist);
+        this.camera.near = Math.max(0.01, dist / 1000);
+        this.camera.far = dist * 100;
+        this.camera.updateProjectionMatrix();
+        this.controls.target.set(0, 0, 0);
+        this.controls.update();
+      }
+    }
+
+    const $ = sel => document.querySelector(sel);
+    const sections = {
+      chooser: $('#mode-chooser'),
+      palmilha: $('#form-palmilha'),
+      heightmap: $('#form-heightmap'),
+      result: $('#result-section'),
+      error: $('#error-section'),
+    };
+    function show(name) {
+      for (const [k, el] of Object.entries(sections)) el.hidden = (k !== name);
+    }
+
+    document.querySelectorAll('.mode-card').forEach(card => {
+      card.addEventListener('click', () => {
+        const mode = card.dataset.mode;
+        show(mode);
+      });
     });
+    document.querySelectorAll('[data-action="back"]').forEach(b => {
+      b.addEventListener('click', () => show('chooser'));
+    });
+    document.querySelectorAll('[data-action="restart"]').forEach(b => {
+      b.addEventListener('click', () => {
+        if (viewer) viewer.clear();
+        show('chooser');
+      });
+    });
+
+    let viewer = null;
+    function getViewer() {
+      if (!viewer) viewer = new Viewer($('#viewer3d'));
+      return viewer;
+    }
+
+    document.querySelectorAll('form[data-mode]').forEach(form => {
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const mode = form.dataset.mode;
+        const btn = form.querySelector('button[type="submit"]');
+        const oldLabel = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = 'Processando…';
+
+        try {
+          const data = new FormData(form);
+          data.set('mode', mode);
+          const resp = await fetch('/api/convert', { method: 'POST', body: data });
+          const json = await resp.json();
+          if (!resp.ok) throw new Error(json.error || 'Falha ao converter.');
+          renderResult(json);
+          show('result');
+          const v = getViewer();
+          $('#viewer-loading').hidden = false;
+          try {
+            if (json.files && json.files.obj) {
+              await v.loadObj('/download/' + json.files.obj);
+            }
+          } finally {
+            $('#viewer-loading').hidden = true;
+          }
+        } catch (err) {
+          $('#error-body').textContent = err.message;
+          show('error');
+        } finally {
+          btn.disabled = false;
+          btn.textContent = oldLabel;
+        }
+      });
+    });
+
+    function renderResult(json) {
+      let meta = '<dl>';
+      meta += `<dt>Modo</dt><dd>${json.mode}</dd>`;
+      meta += `<dt>SVG vetorizado</dt><dd>${json.vectorized ? 'sim' : 'não'}</dd>`;
+      if (json.analise) {
+        meta += `<dt>Pisada</dt><dd><b class="tag tag-${json.analise.tipo}">${json.analise.tipo.toUpperCase()}</b> · índice ${json.analise.arch_index} · pé ${json.analise.lado}</dd>`;
+      }
+      if (json.palmilha) {
+        const p = json.palmilha;
+        meta += `<dt>Palmilha</dt><dd>${p.comprimento_mm} × ${p.largura_mm} mm · arco ${p.altura_arco_mm} mm · cunha ${p.cunha_medial_mm} mm</dd>`;
+      }
+      if (json.preprocess) {
+        const pr = json.preprocess;
+        const flags = [
+          pr.enhanced ? 'melhoria' : null,
+          pr.mask_applied ? 'máscara' : null,
+          pr.cropped ? 'recorte' : null,
+          pr.auto_inverted ? 'auto-inversão' : null,
+        ].filter(Boolean).join(', ') || 'básico';
+        meta += `<dt>Pré-processamento</dt><dd>${pr.input_size} → ${pr.output_size} · ${flags}</dd>`;
+      }
+      if (json.stats) {
+        meta += `<dt>Mesh</dt><dd>${json.stats.vertices.toLocaleString('pt-BR')} vértices · ${json.stats.faces.toLocaleString('pt-BR')} faces</dd>`;
+      }
+      meta += '</dl>';
+      $('#result-meta').innerHTML = meta;
+
+      let dl = '';
+      for (const [k, v] of Object.entries(json.files || {})) {
+        dl += `<a class="dl" href="/download/${v}" download>${k.toUpperCase()} — ${v}</a>`;
+      }
+      $('#result-downloads').innerHTML = dl;
+    }
   </script>
 </body>
 </html>
